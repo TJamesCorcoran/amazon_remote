@@ -1,4 +1,4 @@
-module AmazonRemote
+class Ar
 
   def self.config
     @@config ||= AmazonRemote.new
