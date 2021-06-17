@@ -106,22 +106,21 @@ class Ar
     end
   end
     
-  def add_author_copy_to_cart(code, quant=1, country_code="US")
+  def add_author_copy_to_cart(code, quant=1, shipping_country_code)
     @sel.visit("https://kdp.amazon.com/en_US/title-setup/paperback/#{code}/author-orders")
 
-    if @sel.first("h1", text: "Sign in with your Amazon login", minimum: 0, wait: 1)
+    puts "here-1"
+    if @sel.first("h1", text: "Sign in with your Amazon login", minimum: 0, wait: 1) ||
+       @sel.first("span", text: "Sign in to your account", minimum: 0, wait:1)
+          puts "here-2"
       ret = helper_checkout_signin()
+      
       return { success: false, error_msg: "login required, but failed"} unless @sel.first("span", text: "Order author copies", minimum: 0, wait: 1)
     end
 
-
-    shipping_to_amazon_hash = Hash.new("US")
-    ["AU", "DE", "ES", "FR", "IT"].each { |x| shipping_to_amazon_hash[x] = x }
-    shipping_to_amazon_hash["GB"] = "UK"
-    
-    amazon_country_code = shipping_to_amazon_hash[country_code]
+    puts "here-3"
       
-    @sel.find("option[value='#{amazon_country_code}']").click
+    @sel.find("option[value='#{shipping_country_code}']").click
     
     @sel.find("#data-quantity").set(quant)
 
@@ -132,6 +131,15 @@ class Ar
     @sel.find("#data-quantity").click    
     @sel.find("#submit-author-order-request-announce").click
 
+    if @sel.first("span", text: "Sign in to your account", minimum: 0, wait:10)
+      puts "here-4"
+      ret = helper_checkout_signin()
+      
+      return { success: false, error_msg: "login required, but failed"} unless @sel.first("span", text: "Order author copies", minimum: 0, wait: 1)
+      puts "here-5"
+    end
+    puts "here-6"
+    
     sleep(5)
     if @sel.first("H1", text: "Shopping Cart", wait: 10, minimum: 0)
       return { success: true }
@@ -182,24 +190,35 @@ class Ar
 
   # checkout step 1
   #
-  def checkout_start()
-    puts "-- start_checkout" if VERBOSE
-    @sel.visit(CART_URL)
-    # WORKED FOR AUTHOR COPIES
-    #     @sel.click_on("Proceed to checkout")
-    @sel.first("span", text: "Proceed to checkout").click()
+  def checkout_start(amazon_code)
+    puts "-- start_checkout #{amazon_code}" if VERBOSE
 
-    if @sel.first("H1", text: "Sign-In", wait: 3, minimum: 0)
-      helper_checkout_signin
+    if "US" == amazon_code 
+      @sel.visit(CART_URL)
+      # WORKED FOR AUTHOR COPIES
+      #     @sel.click_on("Proceed to checkout")
+      @sel.first("span", text: "Proceed to checkout").click()
+      return { success: false, error_msg: "checkout page not found"} unless @sel.first("h1", text: "Checkout") 
+      return {success: true }
+
+    elsif "AU" == amazon_code
+      # .au
+      @sel.first("input[value='Proceed to checkout']").click()
+      
+      if @sel.first("H1", text: "Sign-In", wait: 3, minimum: 0)
+        helper_checkout_signin
+      end
+      
+      return { success: false, error_msg: "checkout page not found"} unless @sel.first("h1", text: "Checkout") 
+      return {success: true }
+    else
+      raise "unsupported #{amazon_code}"
     end
-    
-    return { success: false, error_msg: "checkout page not found"} unless @sel.first("h1", text: "Checkout") 
-    return {success: true }
   end    
 
   # checkout step 2
   #
-  def add_address(full_name, addr_1, addr_2, city, state_code, zip, phone, country_code = "US")
+  def add_address(amazon_code, full_name, addr_1, addr_2, city, state_code, zip, phone, country_code = "US")
     puts "-- add_address" if VERBOSE
 
     # sanity check inputs
@@ -208,95 +227,97 @@ class Ar
     return { success: false, error_msg: "country code bad" } if country_code.size != 2
     return { success: false, error_msg: "phone bad"        } if phone.nil?
 
-    @sel.find("a#addressChangeLinkId").click
-
-    # page 3.1
-    #
-#    return { success: false, error_msg: "wrong start page" } unless @sel.first("H3", text: "Choose a shipping address", wait: 10)
-
-
-    @sel.find("a#add-new-address-popover-link", wait: 10).click()
-
-
-    if country_code != "US"
+    if "US" == amazon_code
       
-      # click once to expand the pull-down and to select
-      # click a second time to trigger the JS
+      @sel.find("a#addressChangeLinkId").click
+
+      # page 3.1
       #
-      sel.find("option[value='#{country_code}']").click
-      # sel.find("a[data-value='{\"stringVal\":\"#{country_code}\"}']", minimum: 0, wait: 2).click
-    end
+      #    return { success: false, error_msg: "wrong start page" } unless @sel.first("H3", text: "Choose a shipping address", wait: 10)
 
-    puts "full_name = #{full_name}"
-    sleep(2)
-    @sel.find("input#address-ui-widgets-enterAddressFullName").set(full_name)
-    sleep(5)
-    
-    @sel.find("input#address-ui-widgets-enterAddressPhoneNumber").set(phone)
-    @sel.find("input#address-ui-widgets-enterAddressLine1").set(addr_1)
-    @sel.find("input#address-ui-widgets-enterAddressLine2").set(addr_2) if addr_2
-    
-    @sel.find("input#address-ui-widgets-enterAddressPostalCode").click
-    @sel.find("input#address-ui-widgets-enterAddressPostalCode").set(zip)
 
-    if "US" == country_code
-      # set city
-      #
-      @sel.find("input#address-ui-widgets-enterAddressCity").set(city)
+      @sel.find("a#add-new-address-popover-link", wait: 10).click()
 
-      # two step process to click state code
-      #
-      @sel.find("select#address-ui-widgets-enterAddressStateOrRegion-dropdown-nativeId option[value='#{state_code}']").click
-      data ={"stringVal":"#{state_code}"}.to_json
-      @sel.find("a[data-value='#{data}']").click
-    elsif "AU" == country_code
-      
-      # two step process to set city
-      #
-      sleep(1)
-      @sel.find("span#address-ui-widgets-enterAddressCity").click
-      sleep(2)
-      data ={"stringVal":"#{city}"}.to_json
-      @sel.find("a[data-value='#{data}']", wait: 3).click
 
-      # no need to set state; automatic
-      #
-    end
-
-    
-    @sel.find("span#address-ui-widgets-form-submit-button input").click()
-
-    # this verification step doesn't always happen ?!?
-    #
-    if @sel.first("h1", text: "Verify your address", minimum: 0, wait:2)
-      @sel.find("input[name='address-ui-widgets-saveOriginalOrSuggestedAddress']").click
-
-      if ! @sel.find("li.displayAddressLI displayAddressFullName", text: fulln_ame, wait: 10)
-        return { success: false, error_msg: "name not set"}
+      if country_code != "US"
+        
+        # click once to expand the pull-down and to select
+        # click a second time to trigger the JS
+        #
+        sel.find("option[value='#{country_code}']").click
+        # sel.find("a[data-value='{\"stringVal\":\"#{country_code}\"}']", minimum: 0, wait: 2).click
       end
+
+      puts "full_name = #{full_name}"
+      sleep(2)
+      @sel.find("input#address-ui-widgets-enterAddressFullName").set(full_name)
+      sleep(5)
+      
+      @sel.find("input#address-ui-widgets-enterAddressPhoneNumber").set(phone)
+      @sel.find("input#address-ui-widgets-enterAddressLine1").set(addr_1)
+      @sel.find("input#address-ui-widgets-enterAddressLine2").set(addr_2) if addr_2
+      
+      @sel.find("input#address-ui-widgets-enterAddressPostalCode").click
+      @sel.find("input#address-ui-widgets-enterAddressPostalCode").set(zip)
+
+      if "US" == country_code
+        # set city
+        #
+        @sel.find("input#address-ui-widgets-enterAddressCity").set(city)
+
+        # two step process to click state code
+        #
+        @sel.find("select#address-ui-widgets-enterAddressStateOrRegion-dropdown-nativeId option[value='#{state_code}']").click
+        data ={"stringVal":"#{state_code}"}.to_json
+        @sel.find("a[data-value='#{data}']").click
+      elsif "AU" == country_code
+        
+        # two step process to set city
+        #
+        sleep(1)
+        @sel.find("span#address-ui-widgets-enterAddressCity").click
+        sleep(2)
+        data ={"stringVal":"#{city}"}.to_json
+        @sel.find("a[data-value='#{data}']", wait: 3).click
+
+        # no need to set state; automatic
+        #
+      end
+
+      
+      @sel.find("span#address-ui-widgets-form-submit-button input").click()
+
+      # this verification step doesn't always happen ?!?
+      #
+      if @sel.first("h1", text: "Verify your address", minimum: 0, wait:2)
+        @sel.find("input[name='address-ui-widgets-saveOriginalOrSuggestedAddress']").click
+
+        if ! @sel.find("li.displayAddressLI displayAddressFullName", text: fulln_ame, wait: 10)
+          return { success: false, error_msg: "name not set"}
+        end
+      end
+
+      sleep(2)
+
+      # this verification step doesn't always happen (occurs on weird street addresses with "1/2" in number)
+      #
+      if @sel.first("h4", text: "Review your address", minimum: 0, wait:5)
+        @sel.first("input[aria-labelledby='address-ui-widgets-form-submit-button-announce']").click
+      else
+        # nothing
+      end
+
+      sleep(3)
+      
+      #    if @sel.first("h1", text: "Verify your address", minimum: 0, wait:5)
+      #      return { success: true }
+      #    end
+      #elseif "AU" == amazon_code
+
     end
-
-    sleep(2)
-
-    # this verification step doesn't always happen (occurs on weird street addresses with "1/2" in number)
-    #
-    if @sel.first("h4", text: "Review your address", minimum: 0, wait:5)
-      @sel.first("input[aria-labelledby='address-ui-widgets-form-submit-button-announce']").click
-    else
-      # nothing
-    end
-
-    sleep(3)
-    
-#    if @sel.first("h1", text: "Verify your address", minimum: 0, wait:5)
-#      return { success: true }
-#    end
-    
     return { success: true }
   end
 
-
-  
   def set_cc(cc)
     if @sel.first("H3", text: "Choose a payment method", minimum: 0, wait: 3).nil?
       # no need to add CC this time
