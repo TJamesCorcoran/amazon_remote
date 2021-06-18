@@ -63,6 +63,7 @@ class Ar
   LOGOUT_URL        = "https://www.amazon.com/account/logout"
   CART_URL          = "https://www.amazon.com/gp/cart/view.html"
   ORDERS_URL        = "https://www.amazon.com/gp/your-account/order-history"
+  ORDER_URL         = "https://www.amazon.com/gp/your-account/order-details/ref=ppx_yo_dt_b_order_details_o00?ie=UTF8&orderID="
   
   VERBOSE = true
 
@@ -426,4 +427,67 @@ class Ar
     end
   end
 
+  def self.update_info
+    [
+      #      "111-1412538-6218606",
+      #      "113-7699171-9247435",
+      # "111-9712054-3614665",
+      # "111-6327871-9544229",
+      # "112-0474309-0977032",
+      # "112-8826297-8209834",
+      # "113-0409011-6151430",
+      # "112-6632107-1651414",
+      # "112-5154368-8642605",
+      # "111-9136456-4128210",
+      # "112-7921240-2819456",
+      # "112-4955669-7560262",
+      # "112-9338113-2205016",
+      "112-5327533-4734659",
+      "113-0303322-2828205",
+      "111-2118553-5588207",
+      "114-9960346-2957043",
+      "114-0327159-3193044",
+      "111-2133230-9850611",
+      "112-6255706-7628267",
+      "112-7869418-2872237",
+      "112-8349736-9597820",
+      "112-7363278-3214612",
+      "111-8968833-0996238",
+      "112-2290357-8088223",
+      "113-1002123-1173049",
+      "111-4548686-3577827",
+      "111-8053415-9853006",
+      "112-5412805-4389000",
+      "111-3321597-3490624",
+      "113-0704810-7938666",
+      "112-1917312-9670668",
+      "114-5814624-4025869",
+      "114-5830843-3757846",
+      "113-0982429-4136226",
+      "111-5860411-1160217",
+      "111-9329482-8329056",
+      "112-6505822-6989050",
+      "112-4999591-6912241",
+      "111-6111395-2616226",
+      "112-1943964-7218610"].each do |order_id|
+
+      sel.visit(ORDER_URL + order_id)
+      sel.find("#a-autoid-7-announce").click
+      sel.find("div.a-radio input").click()
+      if (input = sel.first("div.apx-add-credit-card-number input", minimum: 0, wait: 5))
+        input.set("4552 2500 9693 8803")
+        sel.click_button("Verify card")
+        sleep(1)
+      end
+      sel.first("input[name='ppw-widgetEvent:SetPaymentPlanSelectContinueEvent']").click()
+      #    sel.click_button("Continue")
+      sleep(2)
+      if sel.first("h4", text: "Payment information has been updated", minimum: 0, wait: 10)
+        puts("done: #{order_id}")
+      else
+        puts("**** ERROR  #{order_id}")
+      end
+
+    end
+  end  
 end
