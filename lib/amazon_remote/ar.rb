@@ -64,9 +64,12 @@ class Ar
   CART_URL          = "https://www.amazon.com/gp/cart/view.html"
   ORDERS_URL        = "https://www.amazon.com/gp/your-account/order-history"
   ORDER_URL         = "https://www.amazon.com/gp/your-account/order-details/ref=ppx_yo_dt_b_order_details_o00?ie=UTF8&orderID="
+  CANCELLED_URL = "https://www.amazon.com/gp/your-account/order-history/ref=ppx_yo_dt_b_cancelled_orders?ie=UTF8&orderFilter=cancelled"
   
   VERBOSE = true
 
+  CC_STR = "4003 4492 6495 3926"
+  
   # trade
   # -------
   # ETC 1           - J2KGTA4W6FK
@@ -106,7 +109,18 @@ class Ar
       confirm.click
     end
   end
-    
+
+  # def login_again_if_required()
+  #   if @sel.first("h1", text: "Sign in with your Amazon login", minimum: 0, wait: ) ||
+  #      @sel.first("span", text: "Sign in to your account", minimum: 0, wait:2) ||
+  #      @sel.first("h1", text: "Sign-In", minimum: 0, wait:2) ||
+  #     ret = helper_checkout_signin()
+      
+  #     return { success: false, error_msg: "login required, but failed"} unless @sel.first("span", text: "Order author copies", minimum: 0, wait: 1)
+  #   end
+
+  # end
+  
   def add_author_copy_to_cart(code, quant=1, shipping_country_code)
     @sel.visit("https://kdp.amazon.com/en_US/title-setup/paperback/#{code}/author-orders")
 
@@ -199,7 +213,7 @@ class Ar
       # WORKED FOR AUTHOR COPIES
       #     @sel.click_on("Proceed to checkout")
       @sel.first("span", text: "Proceed to checkout").click()
-      return { success: false, error_msg: "checkout page not found"} unless @sel.first("h1", text: "Checkout") 
+      return { success: false, error_msg: "checkout page not found"} unless @sel.first("h1", text: "Checkout", wait: 3) 
       return {success: true }
 
     elsif "AU" == amazon_code
@@ -229,38 +243,38 @@ class Ar
     return { success: false, error_msg: "phone bad"        } if phone.nil?
 
     if "US" == amazon_code
-      
-      @sel.find("a#addressChangeLinkId").click
 
-      # page 3.1
+      # get form for new addr
       #
-      #    return { success: false, error_msg: "wrong start page" } unless @sel.first("H3", text: "Choose a shipping address", wait: 10)
-
-
+      @sel.find("a#addressChangeLinkId").click
       @sel.find("a#add-new-address-popover-link", wait: 10).click()
 
 
+      # set country code
+      #
       if country_code != "US"
         
         # click once to expand the pull-down and to select
         # click a second time to trigger the JS
         #
-        sel.find("option[value='#{country_code}']").click
-        # sel.find("a[data-value='{\"stringVal\":\"#{country_code}\"}']", minimum: 0, wait: 2).click
+        sel.first("option[value='#{country_code}']").click
+        sleep(1)
       end
 
+      # name, addr1, addr2, phone, postal code
+      #
       puts "full_name = #{full_name}"
-      sleep(2)
       @sel.find("input#address-ui-widgets-enterAddressFullName").set(full_name)
-      sleep(5)
       
       @sel.find("input#address-ui-widgets-enterAddressPhoneNumber").set(phone)
       @sel.find("input#address-ui-widgets-enterAddressLine1").set(addr_1)
-      @sel.find("input#address-ui-widgets-enterAddressLine2").set(addr_2) if addr_2
+      @sel.find("input#address-ui-widgets-enterAddressLine2").set(addr_2) if addr_2 && addr_2.size > 0
       
       @sel.find("input#address-ui-widgets-enterAddressPostalCode").click
       @sel.find("input#address-ui-widgets-enterAddressPostalCode").set(zip)
 
+      # city and state code (interface varies by country chosen)
+      #
       if "US" == country_code
         # set city
         #
@@ -270,6 +284,30 @@ class Ar
         #
         @sel.find("select#address-ui-widgets-enterAddressStateOrRegion-dropdown-nativeId option[value='#{state_code}']").click
         data ={"stringVal":"#{state_code}"}.to_json
+        @sel.find("a[data-value='#{data}']").click
+      elsif "CA" == country_code
+        # set city
+        #
+        @sel.find("input#address-ui-widgets-enterAddressCity").set(city)
+
+        # two step process to click state code
+        #
+        state_name = { "AB" => "Alberta",
+          "BC" => "British Columbia",
+          "MB" => "Manitoba",
+          "NB" => "New Brunswick",
+          "NL" => "Newfoundland",
+          "NT" => "Northwest Territories",
+          "NS" => "Nova Scotia",
+          "NU" => "Nunavut",
+          "ON" => "Ontario",
+          "PE" => "Prince Edward Island",
+          "QC" => "Quebec",
+          "SK" => "Saskatchewan",
+          "YT" => "Yukon"}[state_code]
+
+        @sel.find("select#address-ui-widgets-enterAddressStateOrRegion-dropdown-nativeId option[value='#{state_name}']").click
+        data ={"stringVal":"#{state_name}"}.to_json
         @sel.find("a[data-value='#{data}']").click
       elsif "AU" == country_code
         
@@ -283,38 +321,50 @@ class Ar
 
         # no need to set state; automatic
         #
+
+      elsif "MX" == country_code
+        @sel.find("input[name='address-ui-widgets-enterAddressPostalCode-submit']").click()
+        sleep(1)
+      elsif "SG" == country_code
+        # no city or state
+      elsif "SE" == country_code
+        @sel.find("input#address-ui-widgets-enterAddressCity").set(city)
+      elsif  "AT" == country_code
+        @sel.find("input#address-ui-widgets-enterAddressCity").set(city)
+        @sel.find("input#address-ui-widgets-enterAddressStateOrRegion").set("  ")  # <--- what's the right solution here?
+        sleep(5)
+      else
+        @sel.find("input#address-ui-widgets-enterAddressCity").set(city)
+        @sel.find("input#address-ui-widgets-enterAddressStateOrRegion").set(state_code)
       end
+
 
       
-      @sel.find("span#address-ui-widgets-form-submit-button input").click()
-
-      # this verification step doesn't always happen ?!?
+      # days of the week
       #
-      if @sel.first("h1", text: "Verify your address", minimum: 0, wait:2)
-        @sel.find("input[name='address-ui-widgets-saveOriginalOrSuggestedAddress']").click
-
-        if ! @sel.find("li.displayAddressLI displayAddressFullName", text: fulln_ame, wait: 10)
-          return { success: false, error_msg: "name not set"}
+      choose_days = @sel.first("span#address-ui-widgets-addr-details-business-hours", minimum: 0)
+      if choose_days
+        choose_days.click()
+        data ={"stringVal":"NONE"}.to_json
+        weekdays_only = @sel.first("a[data-value='#{data}']", minimum: 0)
+        if weekdays_only
+          weekdays_only.click()
         end
       end
+      
+      @sel.find("span#address-ui-widgets-form-submit-button input").click()
 
       sleep(2)
 
       # this verification step doesn't always happen (occurs on weird street addresses with "1/2" in number)
       #
-      if @sel.first("h4", text: "Review your address", minimum: 0, wait:5)
-        @sel.first("input[aria-labelledby='address-ui-widgets-form-submit-button-announce']").click
-      else
-        # nothing
+      if use_suggested = @sel.first("input[name='address-ui-widgets-saveOriginalOrSuggestedAddress']", wait: 1, minimum: 0)
+        use_suggested.click
+        sleep(2)
       end
 
-      sleep(3)
+      sleep(6)
       
-      #    if @sel.first("h1", text: "Verify your address", minimum: 0, wait:5)
-      #      return { success: true }
-      #    end
-      #elseif "AU" == amazon_code
-
     end
     return { success: true }
   end
@@ -342,6 +392,7 @@ class Ar
     @sel.first("input[aria-labelledby='orderSummaryPrimaryActionBtn-announce']", wait:5).click
     puts "set_cc 3"
 
+    sleep(2)
 
     return { success: true }
   end
@@ -351,9 +402,8 @@ class Ar
   def place_order()
     puts "-- place_order" if VERBOSE
 
-    # @sel.first("span", text: "Place your order", wait: 10).click
-    sleep(2)
-    button = @sel.first(:css, "input[name='placeYourOrder1']", wait: 10, minimum: 0)
+    sleep(3)
+    button = @sel.first(:css, "input[name='placeYourOrder1']", wait: 20, minimum: 0)
     if ! button
       return { success: false, error_msg: "place order button not found" }
     end
@@ -427,55 +477,71 @@ class Ar
     end
   end
 
-  def self.update_info
+  # assumes we're already at the single order page
+  #
+  def update_info_one
+    if sel.first("h1", text: "Sign-In", minimum: 0, wait:2)
+      ret = helper_checkout_signin()
+    end
+    
+    radio = sel.first("div.a-radio input", minimum: 0 )
+    if ! radio
+      puts "skipping: #{order_id} - no button"
+      return
+    end
+
+    radio.click()
+    if (input = sel.first("div.apx-add-credit-card-number input", minimum: 0, wait: 5))
+      input.set(CC_STR)
+      sel.click_button("Verify card")
+      sleep(1)
+    end
+    sel.first("input[name='ppw-widgetEvent:SetPaymentPlanSelectContinueEvent']").click()
+    #    sel.click_button("Continue")
+    sleep(2)
+    if sel.first("h4", text: "Payment information has been updated", minimum: 0, wait: 10)
+      puts("done: ") # would be nice to print order_id here
+    else
+      puts("**** ERROR  #{order_id}")
+    end
+
+  end
+  
+  # for specific orders that have failing charges
+  #
+  def update_info_list
+
     [
-      #      "111-1412538-6218606",
-      #      "113-7699171-9247435",
-      # "111-9712054-3614665",
-      # "111-6327871-9544229",
-      # "112-0474309-0977032",
-      # "112-8826297-8209834",
-      # "113-0409011-6151430",
-      # "112-6632107-1651414",
-      # "112-5154368-8642605",
-      # "111-9136456-4128210",
-      # "112-7921240-2819456",
-      # "112-4955669-7560262",
-      # "112-9338113-2205016",
-      "112-5327533-4734659",
-      "113-0303322-2828205",
-      "111-2118553-5588207",
-      "114-9960346-2957043",
-      "114-0327159-3193044",
-      "111-2133230-9850611",
-      "112-6255706-7628267",
-      "112-7869418-2872237",
-      "112-8349736-9597820",
-      "112-7363278-3214612",
-      "111-8968833-0996238",
-      "112-2290357-8088223",
-      "113-1002123-1173049",
-      "111-4548686-3577827",
-      "111-8053415-9853006",
-      "112-5412805-4389000",
-      "111-3321597-3490624",
-      "113-0704810-7938666",
-      "112-1917312-9670668",
-      "114-5814624-4025869",
-      "114-5830843-3757846",
-      "113-0982429-4136226",
-      "111-5860411-1160217",
-      "111-9329482-8329056",
-      "112-6505822-6989050",
-      "112-4999591-6912241",
-      "111-6111395-2616226",
-      "112-1943964-7218610"].each do |order_id|
+      "111-2784570-9745051",
+      "111-8978261-2265040",
+      "114-8046766-5028252",
+      "114-5957974-3294605",
+      "114-7888738-1405805",
+      "114-8046766-5028252",
+      "111-4143475-8597836",
+      "114-7888738-1405805",
+      "114-4168802-9533046",
+      
+    ].uniq.each do |order_id|
 
       sel.visit(ORDER_URL + order_id)
       sel.find("#a-autoid-7-announce").click
-      sel.find("div.a-radio input").click()
+
+      if sel.first("h1", text: "Sign-In", minimum: 0, wait:2)
+        ret = helper_checkout_signin()
+      end
+
+      # REPLACE EVERYTHING FROM HERE >>>
+      #
+      radio = sel.first("div.a-radio input", minimum: 0 )
+      if ! radio
+        puts "skipping: #{order_id} - no button"
+        next
+      end
+
+      radio.click()
       if (input = sel.first("div.apx-add-credit-card-number input", minimum: 0, wait: 5))
-        input.set("4552 2500 9693 8803")
+        input.set(CC_STR)
         sel.click_button("Verify card")
         sleep(1)
       end
@@ -487,7 +553,158 @@ class Ar
       else
         puts("**** ERROR  #{order_id}")
       end
-
+      #
+      # <<< TO HERE
+      #
+      # with a call to update_info_one()
     end
-  end  
+  end
+
+  # for every unshipped order
+  # 
+  def update_info_all
+    sel.visit(ORDERS_URL)
+    sel.visit("https://www.amazon.com/gp/your-account/order-history/ref=ppx_yo_dt_b_pagination_87_88?ie=UTF8&orderFilter=months-3&search=&startIndex=870")
+    ii = 0
+    begin
+      ii += 1
+      puts "=== page #{ii}"
+
+      # login if needed
+      #
+      if sel.first("h1", text: "Sign-In", minimum: 0, wait:2)
+        ret = helper_checkout_signin()
+      end
+
+      # does this pagination page have any bad orders?
+      #
+      if sel.first("h4.a-alert-heading", minimum: 0, wait: 1)
+        pagination_url = URI.parse(sel.current_url)
+        while revise_button = sel.first("a", text:"Revise Payment Method", minimum: 0, wait: 1)
+          puts "   >>> one"
+          revise_button.click()
+          update_info_one()
+          sel.visit(pagination_url)
+        end
+      end
+      next_link = sel.first("li.a-last a", minimum: 0, wait: 5)
+      next_link.click() if next_link
+    end while next_link && ii < 200
+    
+      
+  end
+
+  def find_cancelled()
+    sel.visit(CANCELLED_URL)
+    ii = 0
+    begin
+      ii += 1
+      puts "=== page #{ii}"
+
+      # login if needed
+      #
+      if sel.first("h1", text: "Sign-In", minimum: 0, wait:2)
+        ret = helper_checkout_signin()
+      end
+
+      # does this pagination page have any bad orders?
+      #
+      sel.all("bdi", minimum: 0, wait: 1).each do |bdi|
+        puts " * #{bdi.text}"
+      end
+      next_link = sel.first("li.a-last a", minimum: 0, wait: 5)
+      next_link.click() if next_link
+    end while next_link && ii < 200
+
+  end
+    
+  
+  def replace_cancelled
+    # full order cancelled
+    [
+      "114-9544000-2244233",
+      "112-9574325-5502639",
+      "112-2264931-7828267",
+      "113-0704810-7938666",
+      "111-5003743-1847463",
+      "113-7804336-2718637",
+      "112-2290357-8088223",
+      "111-6272285-2773839",
+      "114-1135338-1781021",
+      "114-9947165-2851432",
+      "112-8036067-3563419",
+      "111-6378596-5782641",
+      "111-8584428-6130663",
+      "114-9141385-1865018",
+      "113-7882628-4851459",
+      "111-7335909-9298660",
+      "113-4490429-8517024",
+      "113-0661674-9251420",
+      "111-6767643-0689068",
+      "111-7135354-3434632",
+      "111-7379964-0021838",
+      "112-1847004-8859459",
+      "111-6620854-2174636",
+      "111-2682191-1266636",
+      "111-9708121-3282642",
+      "113-5139975-7273824",
+      "114-0638629-1221016",
+      "113-6764800-1488257",
+      "113-6831438-7290660",
+      "113-1470191-2295401",
+      "111-8332148-0351457",
+      "113-4022576-7430666",
+      "111-3514193-8593844",
+      "111-6431468-4859415",
+      "111-5852025-1329039",
+      "114-1873074-8313005",
+      "114-9659962-0795433",
+      "113-4833267-5493845",
+      "114-7248082-3713017",
+      "114-3714724-9124250",
+      "111-5362460-2418645",
+      
+    ]
+
+    # item cancelled
+    [
+      "112-7152627-1025826",
+      "111-5823412-2005868",
+      "113-7377023-7657823",
+
+      "112-9245342-4980235",
+      "112-1484911-5977006",
+      "111-4747702-3705011",
+      "113-7098012-8006615",
+      "113-4851195-8216252",
+      "111-8526837-9165000",
+      "111-0378521-1225012",
+      "112-5327533-4734659",
+      "111-5013419-5539421",
+      "111-2634666-0388243",
+      "111-2369844-1961062",
+      "113-0375133-8526639",
+      "113-8363268-7046652",
+      "114-9960346-2957043",
+      "111-2118553-5588207",
+      "113-1967534-9308241",
+      "112-8438655-6505804",
+      "114-0297750-3253800",
+      "113-3159750-2296227",
+      "112-9338113-2205016",
+      
+    ]
+
+    # refund
+    [
+      "112-7617803-2354616",
+    ]
+
+    # returned
+    [
+      "114-6873865-1472260",
+      "112-7617803-2354616",
+    ]
+  end
+  
 end
