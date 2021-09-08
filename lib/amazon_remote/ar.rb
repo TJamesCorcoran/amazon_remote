@@ -327,7 +327,10 @@ class Ar
         sleep(1)
       elsif "SG" == country_code
         # no city or state
-      elsif "SE" == country_code
+      elsif ["SE", "DE", "GB"].include?(country_code)
+        # city, but no state
+        #
+        
         @sel.find("input#address-ui-widgets-enterAddressCity").set(city)
       elsif  "AT" == country_code
         @sel.find("input#address-ui-widgets-enterAddressCity").set(city)
